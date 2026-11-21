@@ -43,7 +43,7 @@ namespace Jondo.Unity.Server.Handlers
                     // The bar first: drawing it writes the level it was given, and one never written
                     // is only filled whole the first time. Kept then, as a player's first bar is.
                     layout = FightSpellLayout.ForFight(state.Breed, state.CharacterLevel, hero.Session.AccountId);
-                    SpellChoices.RememberBar(layout.Bar.Where(b => b.Spell != Network.FightProtocol.HechizoCuerpoACuerpo));
+                    SpellChoices.RememberBar(layout.Bar);
                     fighter = BuildPlayerFighter(fight);
                     state.IsInFight = true;
                     state.FightId = fight.FightId;
@@ -60,24 +60,30 @@ namespace Jondo.Unity.Server.Handlers
         }
 
         /// <summary>
-        /// A hero's own bar for his master's client, or null for an ally who is no hero. Packed:
-        /// the weapon on slot 0 and his spells after it in his own order, with no gaps -- the
-        /// master's client does not turn the pages of a bar that is not its character's, so what
-        /// is past the first page cannot be reached.
+        /// A hero's own bar for his master's client, or null for an ally who is no hero.
+        /// Preserves the hero's exact saved slot layout and empty slots as configured outside combat.
         /// </summary>
         private static byte[]? HeroBar(Fighter played, long me)
         {
-            if (!_heroBars.TryGetValue(played.Id, out var layout)) return null;
-            var packed = new List<(int Slot, int Spell)>();
-            if (layout.WithWeapon) packed.Add((0, Network.FightProtocol.HechizoCuerpoACuerpo));
-            foreach (var (_, spell) in layout.Bar.Where(b => b.Spell != Network.FightProtocol.HechizoCuerpoACuerpo).OrderBy(b => b.Slot))
-                packed.Add((packed.Count, spell));
-            // What he knows and did not put on his bar comes after, so that every spell he has is in hand.
-            foreach (var (spell, _) in layout.Spells)
-                if (!packed.Any(p => p.Spell == spell)) packed.Add((packed.Count, spell));
-            return Network.FightProtocol.BuildSpellBar(played.Id, layout.Spells, packed, layout.WithWeapon, controllerId: me);
+            if (!_heroBars.TryGetValue(played.Id, out var layout))
+            {
+                var heroSession = Heroes.SessionOf(played.Id);
+                if (heroSession != null)
+                {
+                    using (SessionContext.Push(heroSession))
+                    {
+                        layout = FightSpellLayout.ForFight(heroSession.State.Breed, heroSession.State.CharacterLevel, heroSession.AccountId);
+                        _heroBars[played.Id] = layout;
+                    }
+                }
+            }
+            if (layout == null) return null;
+
+            return Network.FightProtocol.BuildSpellBar(played.Id, layout.Spells, layout.Bar, layout.WithWeapon, controllerId: me);
         }
 
+        internal static void RegisterHeroBarForTests(long heroId, FightSpellLayout.Layout layout) => _heroBars[heroId] = layout;
+        internal static void ClearHeroBarsForTests() => _heroBars.Clear();
         internal static byte[] PlayedAllyBarForTests(Fighter played, long me) => PlayedAllyBar(played, me);
 
         /// <summary>
