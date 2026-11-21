@@ -762,6 +762,16 @@ namespace JondoFix
             // The monster group tooltip's loot and achievements, as the server answers them.
             MonsterGroupTooltip.Tick();
 
+            // Teleporter window (Ctrl+T), HUD menu buttons and smart hybrid autopilot
+            try { TransportUi.Tick(); }
+            catch (Exception ex) { LoggerInstance.Warning($"[JondoFix] Transport UI: {ex.Message}"); }
+
+            try { HudMenuButtons.Tick(); }
+            catch (Exception ex) { LoggerInstance.Warning($"[JondoFix] HUD menu buttons: {ex.Message}"); }
+
+            try { SmartAutopilotClient.Tick(); }
+            catch (Exception ex) { LoggerInstance.Warning($"[JondoFix] Smart autopilot: {ex.Message}"); }
+
             // The administrator's item window: its key, and what the server answered it.
             if (IsJondoAdministrator)
             {
